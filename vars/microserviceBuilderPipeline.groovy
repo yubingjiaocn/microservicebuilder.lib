@@ -208,7 +208,7 @@ def call(body) {
         }
       }
 
-      if (deploy && env.BRANCH_NAME == deployBranch) {
+      if (deploy) {
         stage ('Deploy') {
           deployProject (realChartFolder, registry, image, imageTag, namespace, manifestFolder)
         }
