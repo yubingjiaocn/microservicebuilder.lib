@@ -62,7 +62,6 @@ def call(body) {
   def deploy = (config.deploy ?: System.getenv ("DEPLOY")).toBoolean()
   def release = (config.release ?: 'false').toBoolean()
   def namespace = config.namespace ?: (System.getenv("NAMESPACE") ?: "").trim()
-  def email = (config.email == null) ? '' : config.email.trim()
 
   // these options were all added later. Helm chart may not have the associated properties set.
   def test = (config.test ?: (System.getenv ("TEST") ?: "false").trim()).toLowerCase() == 'true'
@@ -120,7 +119,7 @@ def call(body) {
       }
 
       def imageTag 
-	  imageTag = gitCommit + "-" + imgversion
+	  imageTag = gitCommit
 	  
       if (build) {
         if (fileExists('pom.xml')) {
@@ -136,7 +135,7 @@ def call(body) {
           }
         }
 		
-        if (fileExists('src/main/docker/Dockerfile')) {
+        if (fileExists('Dockerfile')) {
           stage ('Docker Build') {
             container ('docker') {
               def buildCommand = "docker build -t ${image}:${imageTag} "
