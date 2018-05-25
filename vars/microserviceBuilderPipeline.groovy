@@ -149,7 +149,6 @@ def call(body) {
               if (alwaysPullImage) {
                 buildCommand += " --pull=true "
               }
-              buildCommand += " -f src/main/docker/Dockerfile"
               buildCommand += " ."
               if (registrySecret) {
                 sh "ln -s /msb_reg_sec/.dockercfg /home/jenkins/.dockercfg"
