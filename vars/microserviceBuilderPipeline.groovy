@@ -4,7 +4,7 @@
 /*------------------------
   Typical usage:
   @Library('MicroserviceBuilder') _
-  microserviceBuilderPipeline {
+  cipipeline {
     image = 'microservice-test'
   }
 
@@ -46,20 +46,23 @@ def call(body) {
   body.delegate = config
   body()
 
-  print "microserviceBuilderPipeline : config = ${config}"
+  print "cipipeline : config = ${config}"
 
   def image = config.image
+  def imgversion = (config.imgversion == null) ? '' : config.imgversion
   def maven = (config.mavenImage == null) ? 'maven:3.5.2-jdk-8' : config.mavenImage
-  def docker = (config.dockerImage == null) ? 'ibmcom/docker:17.10' : config.dockerImage
-  def kubectl = (config.kubectlImage == null) ? 'ibmcom/k8s-kubectl:v1.8.3' : config.kubectlImage
-  def helm = (config.helmImage == null) ? 'ibmcom/k8s-helm:v2.6.0' : config.helmImage
+  def docker = (config.dockerImage == null) ? 'docker:17.10' : config.dockerImage
+  def kubectl = (config.kubectlImage == null) ? 'k8s-kubectl:v1.8.3' : config.kubectlImage
+  def helm = (config.helmImage == null) ? 'k8s-helm:v2.6.0' : config.helmImage
   def mvnCommands = (config.mvnCommands == null) ? 'clean package' : config.mvnCommands
-  def registry = System.getenv("REGISTRY").trim()
+  def registry = (config.registry == null) ? System.getenv("REGISTRY").trim() : config.registry
   if (registry && !registry.endsWith('/')) registry = "${registry}/"
   def registrySecret = System.getenv("REGISTRY_SECRET").trim()
   def build = (config.build ?: System.getenv ("BUILD")).toBoolean()
   def deploy = (config.deploy ?: System.getenv ("DEPLOY")).toBoolean()
+  def release = (config.release ?: 'false').toBoolean()
   def namespace = config.namespace ?: (System.getenv("NAMESPACE") ?: "").trim()
+  def email = (config.email == null) ? '' : config.email.trim()
 
   // these options were all added later. Helm chart may not have the associated properties set.
   def test = (config.test ?: (System.getenv ("TEST") ?: "false").trim()).toLowerCase() == 'true'
@@ -74,7 +77,7 @@ def call(body) {
   def alwaysPullImage = (System.getenv("ALWAYS_PULL_IMAGE") == null) ? true : System.getenv("ALWAYS_PULL_IMAGE").toBoolean()
   def mavenSettingsConfigMap = System.getenv("MAVEN_SETTINGS_CONFIG_MAP")?.trim() 
 
-  print "microserviceBuilderPipeline: registry=${registry} registrySecret=${registrySecret} build=${build} \
+  print "cipipeline: registry=${registry} registrySecret=${registrySecret} build=${build} \
   deploy=${deploy} deployBranch=${deployBranch} test=${test} debug=${debug} namespace=${namespace} \
   chartFolder=${chartFolder} manifestFolder=${manifestFolder} alwaysPullImage=${alwaysPullImage}"
 
@@ -89,7 +92,7 @@ def call(body) {
   if (mavenSettingsConfigMap) {
     volumes += configMapVolume(configMapName: mavenSettingsConfigMap, mountPath: '/msb_mvn_cfg')
   }
-  print "microserviceBuilderPipeline: volumes = ${volumes}"
+  print "cipipeline: volumes = ${volumes}"
 
   podTemplate(
     label: 'msbPod',
@@ -107,14 +110,18 @@ def call(body) {
   ) {
     node('msbPod') {
       def gitCommit
+      def mailaddr
 
       stage ('Extract') {
         checkout scm
         gitCommit = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+        mailaddr = sh(script: 'git log --pretty="%ce" | sort | uniq | tr "\n" ", "', returnStdout: true).trim()
         echo "checked out git commit ${gitCommit}"
       }
 
-      def imageTag = null
+      def imageTag 
+	  imageTag = gitCommit + "-" + imgversion
+	  
       if (build) {
         if (fileExists('pom.xml')) {
           stage ('Maven Build') {
@@ -128,10 +135,10 @@ def call(body) {
             }
           }
         }
-        if (fileExists('Dockerfile')) {
+		
+        if (fileExists('src/main/docker/Dockerfile')) {
           stage ('Docker Build') {
             container ('docker') {
-              imageTag = gitCommit
               def buildCommand = "docker build -t ${image}:${imageTag} "
               buildCommand += "--label org.label-schema.schema-version=\"1.0\" "
               def scmUrl = scm.getUserRemoteConfigs()[0].getUrl()
@@ -143,18 +150,12 @@ def call(body) {
               if (alwaysPullImage) {
                 buildCommand += " --pull=true "
               }
-              if (libertyLicenseJarBaseUrl) {
-                if (readFile('Dockerfile').contains('LICENSE_JAR_URL')) {
-                  buildCommand += " --build-arg LICENSE_JAR_URL=" + libertyLicenseJarBaseUrl
-                  if (!libertyLicenseJarBaseUrl.endsWith("/")) {
-                    buildCommand += "/"
-                  }
-                  buildCommand += libertyLicenseJarName
-                }
-              }
+              buildCommand += " -f src/main/docker/Dockerfile"
               buildCommand += " ."
               if (registrySecret) {
                 sh "ln -s /msb_reg_sec/.dockercfg /home/jenkins/.dockercfg"
+                sh "mkdir /home/jenkins/.docker"
+                sh "ln -s /msb_reg_sec/.dockerconfigjson /home/jenkins/.docker/config.json"
               }
               sh buildCommand
               if (registry) {
@@ -175,8 +176,7 @@ def call(body) {
         if (imageTag) yamlContent += "\n  tag: \\\"${imageTag}\\\""
         sh "echo \"${yamlContent}\" > pipeline.yaml"
       } else if (fileExists(manifestFolder)){
-        sh "find ${manifestFolder} -type f | xargs sed -i 's|\\(image:\\s*\\)${image}:latest|\\1${registry}${image}:latest|g'"
-        sh "find ${manifestFolder} -type f | xargs sed -i 's|\\(image:\\s*\\)${registry}${image}:latest|\\1${registry}${image}:${gitCommit}|g'"
+        sh "find ${manifestFolder} -type f | xargs sed -i 's|\\(image:\\s*\\)${image}:latest|\\1${registry}${image}:${imageTag}|g'"
       }
 
       if (test && fileExists('pom.xml') && realChartFolder != null && fileExists(realChartFolder)) {
