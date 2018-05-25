@@ -51,9 +51,9 @@ def call(body) {
   def image = config.image
   def imgversion = (config.imgversion == null) ? '' : config.imgversion
   def maven = (config.mavenImage == null) ? 'maven:3.5.2-jdk-8' : config.mavenImage
-  def docker = (config.dockerImage == null) ? 'docker:17.10' : config.dockerImage
-  def kubectl = (config.kubectlImage == null) ? 'k8s-kubectl:v1.8.3' : config.kubectlImage
-  def helm = (config.helmImage == null) ? 'k8s-helm:v2.6.0' : config.helmImage
+  def docker = (config.dockerImage == null) ? 'ibmcom/docker:17.10' : config.dockerImage
+  def kubectl = (config.kubectlImage == null) ? 'ibmcom/k8s-kubectl:v1.8.3' : config.kubectlImage
+  def helm = (config.helmImage == null) ? 'ibmcom/k8s-helm:v2.6.0' : config.helmImage
   def mvnCommands = (config.mvnCommands == null) ? 'clean package' : config.mvnCommands
   def registry = (config.registry == null) ? System.getenv("REGISTRY").trim() : config.registry
   if (registry && !registry.endsWith('/')) registry = "${registry}/"
